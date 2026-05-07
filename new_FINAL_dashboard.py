@@ -909,15 +909,8 @@ def _log_study_event(event_type: str, **kwargs) -> None:
             if true_lbl is not None:
                 row["true_class_nrmse"] = nrmse_map.get(int(true_lbl))
 
-        # s2_ref_nrmse: real training sample of predicted class
-        #   S2 → the reference actually shown to the participant
-        #   S3 → shadow sample drawn identically, for cross-scenario comparison
-        if scenario == "S2":
-            s2_refs = ss.get("study_s2_refs")
-            sig     = ss.get("study_trial_signal")
-            if s2_refs is not None and sig is not None and len(s2_refs) > 0:
-                row["s2_ref_nrmse"] = float(sim_nrmse_as_displayed(sig, s2_refs[0]))
-        elif scenario == "S3":
+        # s2_ref_nrmse: S2 reference removed; S3 shadow ref kept for cross-scenario comparison
+        if scenario == "S3":
             row["s2_ref_nrmse"] = ss.get("study_trial_s3_pred_ref_nrmse")
 
     ss.setdefault("study_log_buffer", []).append(row)
@@ -962,7 +955,7 @@ _CONDITION_LABEL = {
 }
 _SC_INFO = {
     "S1": {"title": "Scenario 1 (S1)", "pool": "A", "aid": "Plain spectrum — no overlay"},
-    "S2": {"title": "Scenario 2 (S2)", "pool": "B", "aid": "Spectrum + real training reference"},
+    "S2": {"title": "Scenario 2 (S2)", "pool": "B", "aid": "Spectrum + Real Examples (Paper)"},
     "S3": {"title": "Scenario 3 (S3)", "pool": "C", "aid": "Spectrum + CycleGAN hypotheses"},
 }
 _STATUS_ICON = {"not_started": "⬜", "in_progress": "🔄", "finished": "✅"}
@@ -1342,14 +1335,7 @@ def _study_load_current_trial(tester, svm_model) -> None:
             top3_idx_set     = {0}
             top3             = [{"label": 9, "score": float(score)}]
 
-    # ── S2: real training reference ──────────────────────────────────────────
-    elif scenario == "S2":
-        if pred != 9:
-            refs = tester.get_random_fault_references_by_label(int(pred), 1)
-        else:
-            refs = [tester.domain_A_train_X[np.random.randint(0, tester.domain_A_train_X.shape[0])]
-                    .astype(np.float32)]
-        s2_refs = np.stack(refs, axis=0)
+    # ── S2: reference sheet (deactivated — s2_refs stays None) ──────────────
 
     # ── record generate timestamp (S3 only) ───────────────────────────────────
     if scenario == "S3":
@@ -1512,7 +1498,7 @@ def _render_scenario_menu() -> None:
     ss     = st.session_state
     status = ss.study_scenario_status
 
-    st.title("CycleGAN Trust Calibration Study")
+    #st.title("CycleGAN Trust Calibration Study")
     st.markdown(
         f"**Participant:** {ss.participant_name} &emsp; "
         f"**ID:** `{ss.participant_id}`"
@@ -1592,32 +1578,46 @@ def _render_trial_s1(signal: np.ndarray) -> None:
     st.plotly_chart(fig, use_container_width=True)
 
 
-def _render_trial_s2(signal: np.ndarray, pred: int) -> None:
-    """Plain spectrum + 1 real training reference below."""
+def _render_trial_s2(signal: np.ndarray) -> None:
+    """Plain spectrum only — reference sheet is deactivated."""
     _render_trial_s1(signal)
-    refs = st.session_state.get("study_s2_refs")
-    if refs is None:
-        return
-    cat = _fault_category(pred)
-    ref_kind = "Normal Reference" if pred == 9 else "Training Reference"
-    st.subheader(f"Real {ref_kind} — Predicted Class {pred} ({cat})")
-    col1, col2 = st.columns(2)
-    for j, col in enumerate([col1, col2]):
-        if j < refs.shape[0]:
-            with col:
-                ref_fig = go.Figure()
-                ref_fig.add_trace(go.Scatter(
-                    x=np.arange(refs.shape[1]), y=refs[j],
-                    mode="lines", line=dict(color="black", width=2), showlegend=False,
-                ))
-                ref_fig.update_layout(
-                    height=220, template="plotly_white",
-                    title=f"Training Reference {j + 1}",
-                    margin=dict(l=30, r=10, t=40, b=30),
-                )
-                ref_fig.update_xaxes(showgrid=True)
-                ref_fig.update_yaxes(showgrid=True)
-                st.plotly_chart(ref_fig, use_container_width=True)
+    # _render_reference_sheet(st.session_state.get("_tester_ref"))
+
+
+# def _render_reference_sheet(tester) -> None:
+#     """Static reference sheet: one training example per fault class (0–9).
+#     Paper-format 2×5 grid. Shown once per S2 scenario, not per trial."""
+#     CLASSES = list(range(9)) + [9]
+#     CAT_LABEL = {
+#         0: "Ball (0)", 1: "Ball (1)", 2: "Ball (2)",
+#         3: "Inner Race (3)", 4: "Inner Race (4)", 5: "Inner Race (5)",
+#         6: "Outer Race (6)", 7: "Outer Race (7)", 8: "Outer Race (8)",
+#         9: "Normal (9)",
+#     }
+#     samples = []
+#     for cls in CLASSES:
+#         if cls == 9:
+#             arr = tester.domain_A_train_X
+#             sample = arr[0].astype(np.float32)
+#         else:
+#             arr = tester.domain_B_train_X_by_class.get(cls)
+#             sample = arr[0].astype(np.float32) if arr is not None else np.zeros(512, dtype=np.float32)
+#         samples.append(sample)
+#     fig, axes = plt.subplots(2, 5, figsize=(14, 4.5))
+#     axes = axes.flatten()
+#     for i, (cls, sig) in enumerate(zip(CLASSES, samples)):
+#         ax = axes[i]
+#         ax.plot(sig, color="black", linewidth=0.9)
+#         ax.set_title(CAT_LABEL[cls], fontsize=9, fontweight="bold")
+#         ax.set_xticks([])
+#         ax.set_yticks([])
+#         ax.grid(True, alpha=0.3, linewidth=0.5)
+#         for spine in ax.spines.values():
+#             spine.set_linewidth(0.8)
+#     fig.suptitle("Reference Examples — All Fault Classes", fontsize=11, fontweight="bold", y=1.02)
+#     fig.tight_layout()
+#     st.pyplot(fig, use_container_width=True)
+#     plt.close(fig)
 
 
 @st.cache_data(max_entries=300, show_spinner=False)
@@ -1942,7 +1942,7 @@ def _render_trial(tester, svm_model) -> None:
     if scenario == "S3":
         _render_trial_s3(signal, pred)
     elif scenario == "S2":
-        _render_trial_s2(signal, pred)
+        _render_trial_s2(signal)
     else:
         _render_trial_s1(signal)
 
@@ -2144,7 +2144,7 @@ def main():
 
     #st.title("CycleGAN Fault Identification Dashboard")
     st.markdown(
-                        f"<div class='small-title'>SVM Trust-Assessment Dashboard with CycleGAN Support</div>",
+                        f"<div class='small-title'>SVM Trust-Assessment Dashboard with CycleGAN Support v1</div>",
                         unsafe_allow_html=True,
                     )
 
