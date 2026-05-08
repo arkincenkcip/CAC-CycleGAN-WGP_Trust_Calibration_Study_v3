@@ -1074,7 +1074,7 @@ def _start_practice() -> None:
     rng = random.Random(ss.get("participant_number", 1) * 1000)
     trials = list((ss.study_pool_data or {}).get("practice_trials", []))
     rng.shuffle(trials)
-    ss.practice_queue        = trials
+    ss.practice_queue        = trials[:2]
     ss.practice_index        = 0
     ss.practice_trial_loaded = False
     ss.study_phase           = "practice"
@@ -1124,7 +1124,11 @@ def _render_practice(svm_model) -> None:
     awaiting    = ss.practice_awaiting_feedback
     show_result = ss.get("practice_show_result", False)
 
-    c_pred, c_trust, c_dont = st.columns([5, 2, 2])
+    c_pred, c_trust, c_dont, c_back = st.columns([5, 2, 2, 2])
+    with c_back:
+        if st.button("← Scenarios", use_container_width=True, key=f"prac_back_inline_{idx}"):
+            ss.study_phase = "scenario_menu"
+            st.rerun()
     with c_pred:
         health       = "Healthy" if cat == "normal" else "Faulty"
         health_color = "#2e7d32" if cat == "normal" else "#c62828"
@@ -1205,8 +1209,12 @@ def _render_practice(svm_model) -> None:
                 if st.button("Submit →", key=f"prac_conf_submit_{idx}",
                              use_container_width=True, type="primary"):
                     ss.practice_conf_val          = conf_val
-                    ss.practice_show_result       = True
+                    ss.practice_show_result       = False
                     ss.practice_awaiting_feedback = False
+                    # advance to next trial immediately (no feedback screen)
+                    ss.practice_index            += 1
+                    ss.practice_trial_loaded      = False
+                    ss.practice_last_decision     = None
                     st.rerun()
         return
 
@@ -1946,12 +1954,11 @@ def _render_trial(tester, svm_model) -> None:
     else:
         _render_trial_s1(signal)
 
-    # ── Escape hatch (admin / error recovery) ────────────────────────────────
-    st.markdown("---")
-    if st.button("↩ Abandon scenario and return to menu", type="secondary"):
-        ss.study_phase    = "scenario_menu"
-        ss.active_scenario = None
-        st.rerun()
+    # ── Escape hatch disabled ─────────────────────────────────────────────────
+    # if st.button("↩ Abandon scenario and return to menu", type="secondary"):
+    #     ss.study_phase    = "scenario_menu"
+    #     ss.active_scenario = None
+    #     st.rerun()
 
 
 def _render_scenario_complete() -> None:
