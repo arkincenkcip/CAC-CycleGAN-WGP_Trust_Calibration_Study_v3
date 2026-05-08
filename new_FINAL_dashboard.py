@@ -2151,7 +2151,7 @@ def main():
 
     #st.title("CycleGAN Fault Identification Dashboard")
     st.markdown(
-                        f"<div class='small-title'>SVM Trust-Assessment Dashboard with CycleGAN Support v1</div>",
+                        f"<div class='small-title'>SVM Trust-Assessment Dashboard with CycleGAN Support v3</div>",
                         unsafe_allow_html=True,
                     )
 
